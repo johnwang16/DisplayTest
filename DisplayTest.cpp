@@ -15,7 +15,7 @@ bool GetNightLightStateData(unsigned char * byteArray, DWORD size);
 bool ProcessNightLightStateData(unsigned char* byteArray, DWORD size);
 bool WriteDataToRegistry(unsigned char* byteArray, DWORD size, bool nightLightState);
 
-int main(void) {
+int main(int argc, char *argv[]) {
 
 	DWORD size = STATE_DATA_LENGTH;
 	unsigned char* regVal = (unsigned char*)malloc(size * sizeof(unsigned char));
@@ -23,8 +23,21 @@ int main(void) {
 	
 	if (GetNightLightStateData(regVal, size)) {
 		nightLightIsOn = ProcessNightLightStateData(regVal, size);
-		ModifyBrightness(nightLightIsOn);
-		WriteDataToRegistry(regVal, size, nightLightIsOn);
+		if (argc > 1){
+			if (_stricmp(argv[1], "on") == 0 && !nightLightIsOn) {
+				//ModifyBrightness(nightLightIsOn);
+				WriteDataToRegistry(regVal, size, nightLightIsOn);
+			}
+			if (_stricmp(argv[1], "off") == 0 && nightLightIsOn) {
+				//ModifyBrightness(nightLightIsOn);
+				WriteDataToRegistry(regVal, size, nightLightIsOn);
+			}
+		}
+		else {
+			printf("Night Light on is %d\n", nightLightIsOn);
+			//ModifyBrightness(nightLightIsOn);
+			//WriteDataToRegistry(regVal, size, nightLightIsOn);
+		}
 	}	
 
 	free(regVal);
@@ -38,13 +51,14 @@ bool WriteDataToRegistry(unsigned char* byteArray, DWORD size, bool nightLightSt
 	HKEY hKey = HKEY_CURRENT_USER;
 	LPCSTR subKey = STATUS_PATH;
 	LONG err;
+	int baseSize = 42; //was 41
 
 	err = RegOpenKeyEx(hKey, subKey, 0, KEY_SET_VALUE, &hKey);
 
 	if (nightLightState)
-		size = 41;
+		size = baseSize;
 	else
-		size = 43;
+		size = baseSize+2;
 
 	if (err != ERROR_SUCCESS)
 		printf("The %s subkey could not be opened. Error code: %x\n", subKey, err);
@@ -63,15 +77,17 @@ bool WriteDataToRegistry(unsigned char* byteArray, DWORD size, bool nightLightSt
 }
 
 bool ProcessNightLightStateData(unsigned char* byteArray, DWORD size) {
-
+	int indicatorIndex = 19; //was 18 prior to 2021-02-11
+	int insertIndex = 24; //was 23
+	int incrementIndex = 10;
 	bool nightLightIsOn = false;
-	int ch = byteArray[18];
+	int ch = byteArray[indicatorIndex];
 
 	if (ch == 0x15) {
 
 		nightLightIsOn = true;
 
-		for (int i = 10; i < 15; i++) {
+		for (int i = incrementIndex; i < incrementIndex + 5; i++) {
 			ch = byteArray[i];
 			if (ch != 0xff) {
 				byteArray[i]++;
@@ -79,9 +95,9 @@ bool ProcessNightLightStateData(unsigned char* byteArray, DWORD size) {
 			}
 		}
 		
-		byteArray[18] = 0x13;
+		byteArray[indicatorIndex] = 0x13;
 
-		for (int i = 24; i > 22; i--)
+		for (int i = insertIndex+1; i >= insertIndex; i--)
 			for (int j = i; j < size - 2; j++)
 				byteArray[j] = byteArray[j + 1];
 	}
@@ -89,7 +105,7 @@ bool ProcessNightLightStateData(unsigned char* byteArray, DWORD size) {
 
 		nightLightIsOn = false;
 
-		for (int i = 10; i < 15; i++) {
+		for (int i = incrementIndex; i < incrementIndex+5; i++) {
 			ch = byteArray[i];
 			if (ch != 0xff) {
 				byteArray[i]++;
@@ -97,17 +113,17 @@ bool ProcessNightLightStateData(unsigned char* byteArray, DWORD size) {
 			}
 		}
 
-		byteArray[18] = 0x15;
+		byteArray[indicatorIndex] = 0x15;
 		
 		int n = 0;
 		while (n < 2) {
-			for (int j = size - 1; j > 23; j--)
+			for (int j = size - 1; j > insertIndex; j--)
 				byteArray[j] = byteArray[j - 1];
 			n++;
 		}
 	
-		byteArray[23] = 0x10;
-		byteArray[24] = 0x00;
+		byteArray[insertIndex] = 0x10;
+		byteArray[insertIndex+1] = 0x00;
 	}
 
 	return nightLightIsOn;
